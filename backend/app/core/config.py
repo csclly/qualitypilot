@@ -13,6 +13,10 @@ class Settings(BaseSettings):
         "@localhost:5432/qualitypilot"
     )
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
+    upload_directory: str = "../data/uploads"
+    max_upload_size: int = 20 * 1024 * 1024
+    document_chunk_size: int = 800
+    document_chunk_overlap: int = 100
 
     model_config = SettingsConfigDict(
         env_file=".env",
