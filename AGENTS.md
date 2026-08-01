@@ -7,6 +7,7 @@
 - 执行后端命令时，使用现有虚拟环境 `backend/.venv`。
 - PostgreSQL 17 与 pgvector 由 `compose.yaml` 定义，数据保存在命名卷 `qualitypilot_pgdata` 中。
 - 项目状态和实施里程碑统一记录在 `docs/PROJECT_STATUS.md`。
+- 面试相关的设计取舍、问题排查、验证证据和常见追问统一记录在 `docs/INTERVIEW_KNOWLEDGE.md`。
 
 ## 数据安全
 
@@ -38,3 +39,4 @@
 - 只进行与当前任务有关的修改，避免无关重构。
 - 编辑前检查用户已有变更，不得覆盖或撤销用户的修改。
 - 完成里程碑或下一阶段计划发生实质变化时，更新 `docs/PROJECT_STATUS.md`。
+- 完成具有面试价值的功能、测试或故障排查后，更新 `docs/INTERVIEW_KNOWLEDGE.md`；只记录真实实现和真实验证结果，不编造指标。
