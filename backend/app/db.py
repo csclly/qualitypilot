@@ -26,12 +26,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    # Import models before create_all so SQLAlchemy registers every table.
-    from app import models  # noqa: F401
-
-    async with engine.begin() as connection:
-        await connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        await connection.run_sync(Base.metadata.create_all)
+    """Verify connectivity; Alembic owns database schema changes."""
+    async with engine.connect() as connection:
+        await connection.execute(text("SELECT 1"))
 
 
 async def close_db() -> None:
