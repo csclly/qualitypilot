@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,15 @@ class Settings(BaseSettings):
     max_upload_size: int = 20 * 1024 * 1024
     document_chunk_size: int = 800
     document_chunk_overlap: int = 100
+
+    dashscope_api_key: SecretStr | None = None
+    embedding_base_url: str = (
+        "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    )
+    embedding_model: str = "qwen3.7-text-embedding"
+    embedding_dimension: int = Field(default=1024, gt=0)
+    embedding_batch_size: int = Field(default=10, ge=1, le=20)
+    embedding_timeout_seconds: float = Field(default=30.0, gt=0)
 
     model_config = SettingsConfigDict(
         env_file=".env",
