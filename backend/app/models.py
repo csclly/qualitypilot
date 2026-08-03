@@ -2,7 +2,18 @@ import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,6 +53,19 @@ class DocumentChunk(Base):
     __tablename__ = "knowledge_document_chunks"
     __table_args__ = (
         UniqueConstraint("document_id", "chunk_index", name="uq_document_chunk_index"),
+        Index(
+            "ix_knowledge_document_chunks_embedding_hnsw_cosine",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+            postgresql_where=text("embedding IS NOT NULL"),
+        ),
+        Index(
+            "ix_knowledge_document_chunks_content_gist_trgm",
+            "content",
+            postgresql_using="gist",
+            postgresql_ops={"content": "gist_trgm_ops"},
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -52,8 +76,17 @@ class DocumentChunk(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     char_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
     char_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # The embedding model is not selected yet, so ingestion leaves this nullable.
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    # Nullable embeddings support staged vectorization and retrying failed jobs.
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
+
+    @property
+    def has_embedding(self) -> bool:
+        return self.embedding is not None
+
+    @property
+    def embedding_dimension(self) -> int | None:
+        return len(self.embedding) if self.embedding is not None else None
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

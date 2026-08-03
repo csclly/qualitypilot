@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     embedding_dimension: int = Field(default=1024, gt=0)
     embedding_batch_size: int = Field(default=10, ge=1, le=20)
     embedding_timeout_seconds: float = Field(default=30.0, gt=0)
+    embedding_max_retries: int = Field(default=2, ge=0, le=5)
+    embedding_retry_base_delay_seconds: float = Field(default=0.5, ge=0, le=10)
+    hybrid_candidate_multiplier: int = Field(default=5, ge=1, le=20)
+    hybrid_rrf_k: int = Field(default=60, ge=1, le=200)
 
     model_config = SettingsConfigDict(
         env_file=".env",

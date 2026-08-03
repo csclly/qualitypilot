@@ -1,0 +1,99 @@
+{
+  "dataset_name": "QualityPilot PCB/SOP 合成检索评测集",
+  "dataset_version": "1.0.0",
+  "top_k": 1,
+  "query_count": 8,
+  "recall_at_k": 0.875,
+  "mrr": 0.875,
+  "citation_accuracy_at_k": 0.875,
+  "queries": [
+    {
+      "query_id": "Q001",
+      "query": "回流焊后连续桥接应该先排查什么？",
+      "recall_at_k": 1.0,
+      "reciprocal_rank": 1.0,
+      "citation_accuracy_at_k": 1.0,
+      "retrieved_document_ids": [
+        "PCB-SOP-REFLOW-BRIDGE"
+      ],
+      "first_relevant_rank": 1
+    },
+    {
+      "query_id": "Q002",
+      "query": "AOI一直误报，可以直接放宽检测阈值吗？",
+      "recall_at_k": 1.0,
+      "reciprocal_rank": 1.0,
+      "citation_accuracy_at_k": 1.0,
+      "retrieved_document_ids": [
+        "PCB-SOP-AOI-FALSE-POSITIVE"
+      ],
+      "first_relevant_rank": 1
+    },
+    {
+      "query_id": "Q003",
+      "query": "换钢网以后需要检查哪些首件项目？",
+      "recall_at_k": 1.0,
+      "reciprocal_rank": 1.0,
+      "citation_accuracy_at_k": 1.0,
+      "retrieved_document_ids": [
+        "PCB-SOP-PRINT-FIRST-ARTICLE"
+      ],
+      "first_relevant_rank": 1
+    },
+    {
+      "query_id": "Q004",
+      "query": "元件在回流之后才偏移，可能是什么原因？",
+      "recall_at_k": 1.0,
+      "reciprocal_rank": 1.0,
+      "citation_accuracy_at_k": 1.0,
+      "retrieved_document_ids": [
+        "PCB-SOP-COMPONENT-OFFSET"
+      ],
+      "first_relevant_rank": 1
+    },
+    {
+      "query_id": "Q005",
+      "query": "发现整批产品质量异常后怎样防止继续流转？",
+      "recall_at_k": 1.0,
+      "reciprocal_rank": 1.0,
+      "citation_accuracy_at_k": 1.0,
+      "retrieved_document_ids": [
+        "PCB-SOP-NONCONFORMING-ISOLATION"
+      ],
+      "first_relevant_rank": 1
+    },
+    {
+      "query_id": "Q006",
+      "query": "印刷首件不合格时还能继续贴片吗？",
+      "recall_at_k": 1.0,
+      "reciprocal_rank": 1.0,
+      "citation_accuracy_at_k": 1.0,
+      "retrieved_document_ids": [
+        "PCB-SOP-PRINT-FIRST-ARTICLE"
+      ],
+      "first_relevant_rank": 1
+    },
+    {
+      "query_id": "Q007",
+      "query": "调整AOI程序后需要留下哪些变更记录？",
+      "recall_at_k": 1.0,
+      "reciprocal_rank": 1.0,
+      "citation_accuracy_at_k": 1.0,
+      "retrieved_document_ids": [
+        "PCB-SOP-AOI-FALSE-POSITIVE"
+      ],
+      "first_relevant_rank": 1
+    },
+    {
+      "query_id": "Q008",
+      "query": "异常批次完成原因分析后，恢复生产前需要做什么验证？",
+      "recall_at_k": 0.0,
+      "reciprocal_rank": 0.0,
+      "citation_accuracy_at_k": 0.0,
+      "retrieved_document_ids": [
+        "PCB-SOP-NONCONFORMING-ISOLATION"
+      ],
+      "first_relevant_rank": null
+    }
+  ]
+}

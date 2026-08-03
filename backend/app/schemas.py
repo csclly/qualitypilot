@@ -1,7 +1,9 @@
+from enum import Enum
 import uuid
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 
 class HealthResponse(BaseModel):
@@ -41,4 +43,47 @@ class DocumentChunkResponse(BaseModel):
     content: str
     char_start: int | None
     char_end: int | None
+    has_embedding: bool
+    embedding_dimension: int | None
     created_at: datetime
+
+
+class DocumentEmbeddingBackfillResponse(BaseModel):
+    document_id: uuid.UUID
+    total_chunks: int
+    embedded_chunks: int
+    skipped_chunks: int
+
+
+class KnowledgeSearchMode(str, Enum):
+    VECTOR = "vector"
+    KEYWORD = "keyword"
+    HYBRID = "hybrid"
+
+
+class KnowledgeSearchRequest(BaseModel):
+    query: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=2000),
+    ]
+    top_k: int = Field(default=5, ge=1, le=50)
+    mode: KnowledgeSearchMode = KnowledgeSearchMode.VECTOR
+
+
+class KnowledgeSearchResult(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    chunk_id: uuid.UUID
+    document_id: uuid.UUID
+    document_title: str
+    source_type: str
+    source_uri: str | None
+    original_filename: str | None
+    chunk_index: int
+    content: str
+    char_start: int | None
+    char_end: int | None
+    score: float
+    match_type: KnowledgeSearchMode
+    vector_score: float | None = None
+    keyword_score: float | None = None

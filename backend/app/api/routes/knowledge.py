@@ -7,12 +7,30 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.errors import embedding_http_exception
 from app.core.config import get_settings
 from app.db import get_db
 from app.models import Document, DocumentChunk
-from app.schemas import DocumentChunkResponse, DocumentCreate, DocumentResponse
-from app.services.document_ingestion import FileTooLargeError, prepare_document, resolve_upload_directory
+from app.schemas import (
+    DocumentChunkResponse,
+    DocumentCreate,
+    DocumentEmbeddingBackfillResponse,
+    DocumentResponse,
+)
+from app.services.document_ingestion import (
+    FileTooLargeError,
+    prepare_document,
+    resolve_upload_directory,
+)
 from app.services.document_parser import DocumentParseError, UnsupportedFileTypeError
+from app.services.embedding.errors import EmbeddingServiceError
+from app.services.embedding.workflow import (
+    EmbeddingDocumentNotFoundError,
+    EmbeddingProviderFactory,
+    backfill_document_embeddings,
+    embed_texts,
+    get_embedding_provider_factory,
+)
 from app.services.file_storage import remove_file, store_file
 
 
@@ -35,6 +53,10 @@ async def create_document(
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     file: Annotated[UploadFile, File(description="支持 TXT、Markdown、PDF 和 DOCX，最大 20 MB")],
+    provider_factory: Annotated[
+        EmbeddingProviderFactory,
+        Depends(get_embedding_provider_factory),
+    ],
     title: Annotated[str | None, Form(min_length=1, max_length=255)] = None,
     db: AsyncSession = Depends(get_db),
 ) -> Document:
@@ -48,9 +70,15 @@ async def upload_document(
     except FileTooLargeError as exc:
         raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=str(exc)) from exc
     except UnsupportedFileTypeError as exc:
-        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=str(exc),
+        ) from exc
     except DocumentParseError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
 
     document_title = (title or prepared.original_filename.rsplit(".", 1)[0]).strip()
     if not document_title:
@@ -58,6 +86,16 @@ async def upload_document(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="文档标题不能为空",
         )
+
+    try:
+        embeddings = await embed_texts(
+            [chunk.content for chunk in prepared.chunks],
+            provider_factory=provider_factory,
+            max_retries=settings.embedding_max_retries,
+            retry_base_delay_seconds=settings.embedding_retry_base_delay_seconds,
+        )
+    except EmbeddingServiceError as exc:
+        raise embedding_http_exception(exc) from exc
 
     upload_directory = resolve_upload_directory(settings.upload_directory)
     stored_name, stored_path = await asyncio.to_thread(
@@ -85,8 +123,11 @@ async def upload_document(
             content=chunk.content,
             char_start=chunk.char_start,
             char_end=chunk.char_end,
+            embedding=embedding,
         )
-        for index, chunk in enumerate(prepared.chunks)
+        for index, (chunk, embedding) in enumerate(
+            zip(prepared.chunks, embeddings, strict=True)
+        )
     ]
 
     try:
@@ -105,6 +146,33 @@ async def upload_document(
 async def list_documents(db: AsyncSession = Depends(get_db)) -> list[Document]:
     result = await db.execute(select(Document).order_by(Document.created_at.desc()))
     return list(result.scalars().all())
+
+
+@router.post(
+    "/{document_id}/embeddings",
+    response_model=DocumentEmbeddingBackfillResponse,
+)
+async def backfill_embeddings(
+    document_id: uuid.UUID,
+    provider_factory: Annotated[
+        EmbeddingProviderFactory,
+        Depends(get_embedding_provider_factory),
+    ],
+    db: AsyncSession = Depends(get_db),
+) -> DocumentEmbeddingBackfillResponse:
+    try:
+        result = await backfill_document_embeddings(
+            db,
+            document_id,
+            provider_factory=provider_factory,
+            max_retries=settings.embedding_max_retries,
+            retry_base_delay_seconds=settings.embedding_retry_base_delay_seconds,
+        )
+    except EmbeddingDocumentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except EmbeddingServiceError as exc:
+        raise embedding_http_exception(exc) from exc
+    return DocumentEmbeddingBackfillResponse.model_validate(result, from_attributes=True)
 
 
 @router.get("/{document_id}/chunks", response_model=list[DocumentChunkResponse])

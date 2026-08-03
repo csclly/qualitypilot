@@ -17,5 +17,23 @@ services:
       timeout: 5s
       retries: 10
 
+  postgres-test:
+    profiles: ["test"]
+    image: pgvector/pgvector:pg17
+    container_name: qualitypilot-postgres-test
+    environment:
+      POSTGRES_DB: qualitypilot_test
+      POSTGRES_USER: qualitypilot_test
+      POSTGRES_PASSWORD: qualitypilot_test_password
+    ports:
+      - "127.0.0.1:5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qualitypilot_test -d qualitypilot_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
 volumes:
   qualitypilot_pgdata:

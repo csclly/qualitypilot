@@ -1,0 +1,65 @@
+{
+  "name": "QualityPilot PCB/SOP 合成检索评测集",
+  "version": "1.0.0",
+  "description": "用于开发阶段回归测试的合成脱敏样例，不代表真实企业数据或生产指标。",
+  "documents": [
+    {"id": "PCB-SOP-REFLOW-BRIDGE", "title": "回流焊桥接处置规范", "path": "documents/回流焊桥接处置规范.md"},
+    {"id": "PCB-SOP-AOI-FALSE-POSITIVE", "title": "AOI误报复核流程", "path": "documents/AOI误报复核流程.md"},
+    {"id": "PCB-SOP-PRINT-FIRST-ARTICLE", "title": "锡膏印刷首件检查", "path": "documents/锡膏印刷首件检查.md"},
+    {"id": "PCB-SOP-COMPONENT-OFFSET", "title": "元件偏移异常分析", "path": "documents/元件偏移异常分析.md"},
+    {"id": "PCB-SOP-NONCONFORMING-ISOLATION", "title": "不合格品隔离与放行", "path": "documents/不合格品隔离与放行.md"}
+  ],
+  "queries": [
+    {
+      "id": "Q001",
+      "query": "回流焊后连续桥接应该先排查什么？",
+      "relevant_document_ids": ["PCB-SOP-REFLOW-BRIDGE"],
+      "evidence_by_document": {"PCB-SOP-REFLOW-BRIDGE": ["钢网开口", "锡膏印刷压力"]}
+    },
+    {
+      "id": "Q002",
+      "query": "AOI一直误报，可以直接放宽检测阈值吗？",
+      "relevant_document_ids": ["PCB-SOP-AOI-FALSE-POSITIVE"],
+      "evidence_by_document": {"PCB-SOP-AOI-FALSE-POSITIVE": ["不得直接扩大容差", "黄金板验证"]}
+    },
+    {
+      "id": "Q003",
+      "query": "换钢网以后需要检查哪些首件项目？",
+      "relevant_document_ids": ["PCB-SOP-PRINT-FIRST-ARTICLE"],
+      "evidence_by_document": {"PCB-SOP-PRINT-FIRST-ARTICLE": ["钢网编号", "锡膏厚度"]}
+    },
+    {
+      "id": "Q004",
+      "query": "元件在回流之后才偏移，可能是什么原因？",
+      "relevant_document_ids": ["PCB-SOP-COMPONENT-OFFSET"],
+      "evidence_by_document": {"PCB-SOP-COMPONENT-OFFSET": ["两端焊盘锡膏量是否不均", "润湿是否同步"]}
+    },
+    {
+      "id": "Q005",
+      "query": "发现整批产品质量异常后怎样防止继续流转？",
+      "relevant_document_ids": ["PCB-SOP-NONCONFORMING-ISOLATION"],
+      "evidence_by_document": {"PCB-SOP-NONCONFORMING-ISOLATION": ["移入隔离区域", "系统状态同步改为待评审"]}
+    },
+    {
+      "id": "Q006",
+      "query": "印刷首件不合格时还能继续贴片吗？",
+      "relevant_document_ids": ["PCB-SOP-PRINT-FIRST-ARTICLE"],
+      "evidence_by_document": {"PCB-SOP-PRINT-FIRST-ARTICLE": ["停止后续贴片"]}
+    },
+    {
+      "id": "Q007",
+      "query": "调整AOI程序后需要留下哪些变更记录？",
+      "relevant_document_ids": ["PCB-SOP-AOI-FALSE-POSITIVE"],
+      "evidence_by_document": {"PCB-SOP-AOI-FALSE-POSITIVE": ["修改人", "验证批次"]}
+    },
+    {
+      "id": "Q008",
+      "query": "异常批次完成原因分析后，恢复生产前需要做什么验证？",
+      "relevant_document_ids": ["PCB-SOP-REFLOW-BRIDGE", "PCB-SOP-COMPONENT-OFFSET"],
+      "evidence_by_document": {
+        "PCB-SOP-REFLOW-BRIDGE": ["首件验证"],
+        "PCB-SOP-COMPONENT-OFFSET": ["首件确认"]
+      }
+    }
+  ]
+}
