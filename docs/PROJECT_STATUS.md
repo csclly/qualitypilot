@@ -15,6 +15,7 @@
 - 已选定阿里云百炼 `qwen3.7-text-embedding`，固定输出 1024 维向量，后续使用余弦相似度检索。
 - Embedding 的 API Key、专属接入地址、模型、维度、批量大小和超时时间已纳入 Pydantic Settings；真实密钥只保存在本地 `backend/.env`。
 - 项目已初始化 Git，默认分支为 `main`，并连接到 GitHub 私有仓库 `csclly/qualitypilot`。
+- WSL GitHub CLI 2.94.0 已持久安装在 `/home/qualitypilot/.local/bin/gh`，Git 凭据助手不再依赖 `/tmp` 临时路径。
 
 ## 已完成功能
 
@@ -65,7 +66,7 @@
 - 使用事务内 200 条临时中文分块执行 `EXPLAIN`，修正 SQL CAST 和次级排序后确认查询计划使用 trigram GiST `Index Scan`，随后整体回滚。
 - 真实百炼 API 调用成功：单条中文 PCB 文本由 `qwen3.7-text-embedding` 返回 1 条 1024 维向量，本次统计为 38 Token。
 - WSL 首次 TLS 握手返回 `SSL_ERROR_SYSCALL`；强制 IPv4 和 HTTP/1.1 后专属 API Host 返回 HTTP 200。该结果属于手工 API 验证；FastAPI 向量化流程使用可注入的假 Provider 完成自动化验证。
-- Embedding、上传、回填、检索和评测接入后，`alembic check` 无待生成操作，48 项测试全部通过；自动化测试使用模拟 HTTP 或假 Provider，不调用真实 API。
+- Embedding、上传、回填、检索和评测接入后，`alembic check` 无待生成操作，52 项测试全部通过；自动化测试使用模拟 HTTP 或假 Provider，不调用真实 API。
 - 真实 Uvicorn 验收上传 10,930 字节 TXT，生成 9 个分块，上传和查询接口均返回成功。
 - 经用户授权，通过真实 Uvicorn 上传接口导入 5 份合成评测文档，生成 5 个分块；逐条确认状态为 `ready` 且向量维度为 1024。
 - 使用真实百炼查询向量完成基线：Top-1 的 Recall、MRR、引用正确率均为 0.8750；Top-3 的 Recall 为 0.9375、MRR 为 0.9167、引用正确率为 0.3333。
@@ -73,13 +74,13 @@
 - 关键词基线：Top-1 Recall 0.6875、MRR 0.7500、引用正确率 0.7500；Top-3 Recall 1.0000、MRR 0.8750、引用正确率 0.5625。
 - 混合检索基线：Top-1 Recall 0.9375、MRR 1.0000、引用正确率 1.0000；Top-3 Recall 1.0000、MRR 1.0000、引用正确率 0.3750。
 - 混合 Top-1 相比向量 Top-1 的 Recall 从 0.8750 提升到 0.9375；指标只来自 5 文档、8 查询的合成小样本，不代表生产效果。
+- 提交 `b065657` 推送到 `origin/main` 后，GitHub Actions `Backend Tests` 首次远端运行成功，用时 47 秒。
 
 ## 已知缺口
 
 - 当前回填接口按单文档同步执行，尚无全库后台任务、持久化重试队列、失败任务状态和调用指标。
 - 已完成合成小样本真实 Provider 基线，但没有真实企业 PCB 评测数据，当前指标不能代表生产效果。
 - `pg_trgm` 是字符片段检索，不等同于中文语义分词或 BM25；尚未引入 Rerank，是否需要引入必须用更大真实评测集决定。
-- GitHub Actions 工作流已在源码中创建并完成本地等价检查，但尚未在推送后确认 GitHub 托管 Runner 的首次执行结果。
 - 文档列表和分块列表尚未分页。
 - 暂不支持扫描 PDF 的 OCR。
 - 尚无 LangGraph Agent、MES/QMS 工具、人工审批、前端、可观测性和自动评测。
