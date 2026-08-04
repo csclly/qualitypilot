@@ -4,6 +4,7 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from app.agent.checkpoint_schema import register_checkpoint_tables
 from app.core.config import get_settings
 from app.db import Base
 from app import models  # noqa: F401
@@ -14,6 +15,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
+register_checkpoint_tables(Base.metadata)
 target_metadata = Base.metadata
 
 

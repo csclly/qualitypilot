@@ -1,6 +1,6 @@
 # QualityPilot 项目状态
 
-最后更新：2026-08-03
+最后更新：2026-08-04
 
 ## 当前架构
 
@@ -16,6 +16,7 @@
 - Embedding 的 API Key、专属接入地址、模型、维度、批量大小和超时时间已纳入 Pydantic Settings；真实密钥只保存在本地 `backend/.env`。
 - 项目已初始化 Git，默认分支为 `main`，并连接到 GitHub 私有仓库 `csclly/qualitypilot`。
 - WSL GitHub CLI 2.94.0 已持久安装在 `/home/qualitypilot/.local/bin/gh`，Git 凭据助手不再依赖 `/tmp` 临时路径。
+- Agent 编排使用 LangGraph 1.2；检查点通过 `AsyncPostgresSaver` 持久化到 PostgreSQL，运行时依赖通过 context 注入，不进入可序列化状态。
 
 ## 已完成功能
 
@@ -30,6 +31,9 @@
 - `GET /api/v1/knowledge/documents/{document_id}/chunks` 文档分块查询接口。
 - `POST /api/v1/knowledge/documents/{document_id}/embeddings` 单文档缺失向量幂等回填接口。
 - `POST /api/v1/knowledge/search` 余弦相似度知识检索接口，返回分块、相似度、文档来源和字符偏移。
+- `POST /api/v1/agent/runs` 启动 Agent，并在证据草稿生成后暂停等待审批。
+- `GET /api/v1/agent/runs/{run_id}` 查询运行状态、证据、草稿和审批结果。
+- `POST /api/v1/agent/runs/{run_id}/approval` 批准或拒绝草稿，并恢复工作流。
 - TXT、Markdown、PDF 和 DOCX 纯文本提取。
 - 20 MB 上传限制、文件名安全处理、类型/签名检查和 SHA-256 校验值。
 - 约 800 字符、100 字符重叠、优先句子边界的文本切分。
@@ -51,18 +55,26 @@
 - 新增 5 份合成脱敏 PCB/SOP 文档、8 条标注查询和可重复运行的检索评测命令，计算 Recall@K、MRR 与引用正确率。
 - pytest 会在收集到集成测试时自动升级隔离测试库，强制测试库名以 `_test` 结尾，并清空真实 Embedding API Key。
 - GitHub Actions 后端工作流使用独立 pgvector 服务，执行依赖、语法、Alembic 迁移状态和完整测试检查。
+- LangGraph 最小流程已实现为“知识检索 → 证据草稿 → 人工审批中断 → 批准发布或拒绝结束”。
+- Agent 状态、证据和建议使用独立类型契约；数据库会话、检索器和草稿生成器使用运行时依赖注入。
+- Agent 默认复用 vector、keyword、hybrid 检索能力，默认选择 hybrid。
+- 未选定生成模型前使用确定性证据草稿生成器，并明确禁止自动触发生产操作。
+- 新增 `0006_agent_checkpoints` 增量迁移，建立 LangGraph PostgreSQL 检查点表、写入表、二进制对象表及索引。
+- FastAPI lifespan 统一打开和关闭 psycopg 异步连接池；SQLAlchemy 业务连接与 LangGraph 检查点连接职责分离。
+- 检查点使用严格的 `JsonPlusSerializer` 配置，不允许通过环境变量放宽可反序列化模块范围。
+- Agent 可在 Uvicorn 热重载后按原 `run_id` 恢复待审批状态，并继续批准或拒绝。
 
 ## 已验证结果
 
 - PostgreSQL 17.10 与 pgvector 0.8.6 运行正常。
-- 现有数据库已安全升级到 `0005_trigram_search`；迁移只安装 `pg_trgm` 并创建内容 GiST 索引，开发库 7 个文档、6 个分块和 6 个向量保持不变。
+- 现有数据库已安全升级到 `0006_agent_checkpoints`；开发库 7 个文档、6 个分块和 6 个向量保持不变。
 - `alembic check` 确认 ORM 模型与迁移后的数据库结构一致。
 - 已在事务中临时写入 1024 维测试向量并由 `vector_dims` 确认维度，随后回滚；数据库没有遗留测试分块。
 - 使用事务内 200 条临时非零向量执行 `EXPLAIN`，确认查询计划为 HNSW `Index Scan`，随后整体回滚。
-- 隔离测试库从空库顺序执行 `0001_existing_schema` 至 `0005_trigram_search` 后，完整 52 项测试全部通过；测试结束后文档、分块和向量计数均为 0。
-- 不启动 PostgreSQL 时，44 项非集成测试通过，另有 8 项集成测试被正确排除。
+- 隔离测试库顺序执行 `0001_existing_schema` 至 `0006_agent_checkpoints` 后，完整 62 项测试全部通过。
+- 不启动测试数据库时，53 项非集成测试通过，另有 9 项集成测试被正确排除。
 - 隔离测试前后开发库计数均保持为 7 个文档、6 个分块、6 个非空向量，Uvicorn 进程持续运行；本轮未修改开发库数据。
-- 自动化测试共 52 项，全部通过；新增覆盖 RRF 融合、中文关键词排序、模式校验和评测模式透传。
+- 自动化测试共 62 项，全部通过；新增覆盖 Agent 暂停恢复、审批、检索适配、持久化恢复和连接池配置。
 - 使用事务内 200 条临时中文分块执行 `EXPLAIN`，修正 SQL CAST 和次级排序后确认查询计划使用 trigram GiST `Index Scan`，随后整体回滚。
 - 真实百炼 API 调用成功：单条中文 PCB 文本由 `qwen3.7-text-embedding` 返回 1 条 1024 维向量，本次统计为 38 Token。
 - WSL 首次 TLS 握手返回 `SSL_ERROR_SYSCALL`；强制 IPv4 和 HTTP/1.1 后专属 API Host 返回 HTTP 200。该结果属于手工 API 验证；FastAPI 向量化流程使用可注入的假 Provider 完成自动化验证。
@@ -75,6 +87,12 @@
 - 混合检索基线：Top-1 Recall 0.9375、MRR 1.0000、引用正确率 1.0000；Top-3 Recall 1.0000、MRR 1.0000、引用正确率 0.3750。
 - 混合 Top-1 相比向量 Top-1 的 Recall 从 0.8750 提升到 0.9375；指标只来自 5 文档、8 查询的合成小样本，不代表生产效果。
 - 提交 `b065657` 推送到 `origin/main` 后，GitHub Actions `Backend Tests` 首次远端运行成功，用时 47 秒。
+- Agent 新增 6 项自动化测试，覆盖暂停恢复、批准拒绝、重复审批冲突、API 校验及检索适配；测试不访问真实云端。
+- 运行中的 Uvicorn 已完成关键词模式真实 HTTP 冒烟：启动返回 202、检索 3 条证据、查询为待审批，批准后状态为 completed 且产生最终响应；未调用云端。
+- PostgreSQL 持久化测试验证：关闭第一套工作流及连接池后，用新连接池按相同 `run_id` 恢复待审批状态并完成批准。
+- 隔离测试库已完成 `0006` 降级、重新升级和 `alembic check`；降级在存在 Agent 状态时会拒绝执行，避免静默丢失检查点。
+- 运行中的 Uvicorn 创建待审批任务后触发热重载，重载完成后查询仍返回 pending，批准后变为 completed；冒烟任务随后按精确 `run_id` 清理。
+- 开发库迁移后仍为 7 个文档、6 个分块和 6 个非空向量；检查点冒烟数据已清理，三张状态表均为 0 行。
 
 ## 已知缺口
 
@@ -83,14 +101,17 @@
 - `pg_trgm` 是字符片段检索，不等同于中文语义分词或 BM25；尚未引入 Rerank，是否需要引入必须用更大真实评测集决定。
 - 文档列表和分块列表尚未分页。
 - 暂不支持扫描 PDF 的 OCR。
-- 尚无 LangGraph Agent、MES/QMS 工具、人工审批、前端、可观测性和自动评测。
+- Agent 已能跨进程恢复，但尚无检查点保留期限、归档清理策略、审批人身份与独立审计事件表。
+- 当前建议仍是确定性证据草稿，不是生成模型的根因分析；尚无 MES/QMS 工具、工单写入、前端和 Agent 可观测性。
 
-## 下一里程碑：Agent 工作流基础
+## 下一里程碑：结构化生成与业务工具
 
-1. 已完成第一版合成脱敏 PCB/SOP 文档、标注查询、指标模块和评测运行器。
-2. 已完成真实样例导入，并保存 Top-1 与 Top-3 向量检索基线报告。
-3. 已建立隔离测试数据库并接入 GitHub Actions 持续集成配置。
-4. 已完成 pg_trgm 关键词检索、RRF 融合和同评测集三模式对比；下一步设计可追踪、可暂停恢复的 Agent 状态与最小工作流。
+1. 已完成 Agent 输入、状态、证据、草稿和审批结果的数据契约。
+2. 已完成最小 LangGraph 工作流、运行状态查询和人工批准/拒绝接口。
+3. 已完成 PostgreSQL 持久化检查点及 Uvicorn 热重载恢复验证。
+4. 选定文本生成模型，定义严格结构化输出和证据引用契约，替换确定性草稿生成器，同时保留人工审批。
+5. 设计只读 MES/QMS 查询工具协议、超时、错误分类和假实现。
+6. 增加审批人、审批时间、错误历史和检查点清理策略。
 
 ## 当前实施决策
 
@@ -117,6 +138,13 @@
 - 引用正确率要求检索分块同时来自相关文档且包含至少一个人工标注证据短语；当前按查询计算后取宏平均。
 - 真实基线同时保存 Top-1 和 Top-3：前者衡量首条引用质量，后者衡量扩大候选集后的召回能力。
 - 评测运行器只对网络错误、HTTP 429 和 5xx 做最多 2 次指数退避重试；普通 4xx 不重试，重试耗尽仍明确失败。
+- Agent 可恢复状态只保存字符串、数值、证据和草稿；数据库会话、Provider 工厂和生成器放在 LangGraph runtime context。
+- 审批节点使用 `interrupt` 暂停，通过相同 `thread_id/run_id` 和 `Command(resume=...)` 恢复；重复审批返回 409。
+- LangGraph 官方检查点结构由 `0006` Alembic 迁移创建，应用运行时不调用 `setup()`；数据库结构始终由项目迁移历史统一管理。
+- 检查点包固定为 `langgraph-checkpoint-postgres==3.1.1`，升级依赖时必须同步审查其迁移定义与项目 Alembic。
+- 检查点使用独立 psycopg 异步连接池，启用 `autocommit`、`dict_row` 和 `prepare_threshold=0`，连接池大小由 Pydantic Settings 校验。
+- `0006` 降级前检查状态表；存在任何 Agent 运行状态时主动拒绝，以防误删可恢复任务。
+- 未选定文本生成模型前不伪造 AI 根因分析，批准前不产生最终响应。
 
 ## 安全约束
 

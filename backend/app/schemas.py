@@ -87,3 +87,63 @@ class KnowledgeSearchResult(BaseModel):
     match_type: KnowledgeSearchMode
     vector_score: float | None = None
     keyword_score: float | None = None
+
+
+class AgentRunStatus(str, Enum):
+    CREATED = "created"
+    RETRIEVING = "retrieving"
+    DRAFTING = "drafting"
+    PENDING_APPROVAL = "pending_approval"
+    COMPLETED = "completed"
+    REJECTED = "rejected"
+
+
+class AgentRunCreate(BaseModel):
+    question: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=2000),
+    ]
+    top_k: int = Field(default=5, ge=1, le=20)
+    search_mode: KnowledgeSearchMode = KnowledgeSearchMode.HYBRID
+
+
+class AgentApprovalRequest(BaseModel):
+    approved: bool
+    comment: Annotated[
+        str | None,
+        StringConstraints(strip_whitespace=True, max_length=2000),
+    ] = None
+
+
+class AgentEvidenceResponse(BaseModel):
+    chunk_id: uuid.UUID
+    document_id: uuid.UUID
+    document_title: str
+    source_uri: str | None
+    original_filename: str | None
+    chunk_index: int
+    content: str
+    score: float
+    match_type: KnowledgeSearchMode
+    vector_score: float | None = None
+    keyword_score: float | None = None
+
+
+class AgentRecommendationResponse(BaseModel):
+    summary: str
+    suggested_actions: list[str]
+    risk_notes: list[str]
+
+
+class AgentRunResponse(BaseModel):
+    run_id: uuid.UUID
+    question: str
+    search_mode: KnowledgeSearchMode
+    top_k: int
+    status: AgentRunStatus
+    evidence: list[AgentEvidenceResponse]
+    draft: AgentRecommendationResponse | None = None
+    approval_required: bool
+    approved: bool | None = None
+    approval_comment: str | None = None
+    final_response: AgentRecommendationResponse | None = None

@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     embedding_retry_base_delay_seconds: float = Field(default=0.5, ge=0, le=10)
     hybrid_candidate_multiplier: int = Field(default=5, ge=1, le=20)
     hybrid_rrf_k: int = Field(default=60, ge=1, le=200)
+    agent_checkpoint_pool_min_size: int = Field(default=1, ge=1, le=20)
+    agent_checkpoint_pool_max_size: int = Field(default=5, ge=1, le=50)
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -42,6 +44,15 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    def model_post_init(self, __context: object) -> None:
+        if (
+            self.agent_checkpoint_pool_max_size
+            < self.agent_checkpoint_pool_min_size
+        ):
+            raise ValueError(
+                "AGENT_CHECKPOINT_POOL_MAX_SIZE 不能小于 MIN_SIZE"
+            )
 
 
 @lru_cache
