@@ -38,6 +38,8 @@ class FakeGenerator:
             "summary": f"问题：{question}；证据数：{len(evidence)}",
             "suggested_actions": ["检查钢网开口"],
             "risk_notes": ["需要人工确认"],
+            "citations": [evidence[0]["chunk_id"]],
+            "generation_mode": "model",
         }
 
 

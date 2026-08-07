@@ -1,4 +1,4 @@
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 
 class AgentEvidence(TypedDict):
@@ -19,6 +19,8 @@ class AgentRecommendation(TypedDict):
     summary: str
     suggested_actions: list[str]
     risk_notes: list[str]
+    citations: list[str]
+    generation_mode: Literal["model", "deterministic_fallback"]
 
 
 class QualityAgentState(TypedDict, total=False):

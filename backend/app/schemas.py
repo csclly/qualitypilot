@@ -98,6 +98,11 @@ class AgentRunStatus(str, Enum):
     REJECTED = "rejected"
 
 
+class AgentGenerationMode(str, Enum):
+    MODEL = "model"
+    DETERMINISTIC_FALLBACK = "deterministic_fallback"
+
+
 class AgentRunCreate(BaseModel):
     question: Annotated[
         str,
@@ -133,6 +138,8 @@ class AgentRecommendationResponse(BaseModel):
     summary: str
     suggested_actions: list[str]
     risk_notes: list[str]
+    citations: list[uuid.UUID] = Field(default_factory=list)
+    generation_mode: AgentGenerationMode = AgentGenerationMode.DETERMINISTIC_FALLBACK
 
 
 class AgentRunResponse(BaseModel):

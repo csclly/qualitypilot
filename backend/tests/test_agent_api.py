@@ -62,6 +62,8 @@ async def test_agent_api_start_get_and_approve() -> None:
             assert body["status"] == "pending_approval"
             assert body["approval_required"] is True
             assert body["evidence"][0]["document_title"] == "AOI 桥接处理规范"
+            assert body["draft"]["generation_mode"] == "deterministic_fallback"
+            assert body["draft"]["citations"] == [body["evidence"][0]["chunk_id"]]
             assert body["final_response"] is None
 
             fetched = await client.get(f"/api/v1/agent/runs/{run_id}")

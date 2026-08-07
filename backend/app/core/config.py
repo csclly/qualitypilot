@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     embedding_timeout_seconds: float = Field(default=30.0, gt=0)
     embedding_max_retries: int = Field(default=2, ge=0, le=5)
     embedding_retry_base_delay_seconds: float = Field(default=0.5, ge=0, le=10)
+    generation_base_url: str = (
+        "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    )
+    generation_model: str = "qwen3.7-max-2026-05-20"
+    generation_timeout_seconds: float = Field(default=60.0, gt=0)
+    generation_max_retries: int = Field(default=2, ge=0, le=5)
+    generation_retry_base_delay_seconds: float = Field(default=0.5, ge=0, le=10)
+    generation_max_completion_tokens: int = Field(default=1200, ge=200, le=8000)
     hybrid_candidate_multiplier: int = Field(default=5, ge=1, le=20)
     hybrid_rrf_k: int = Field(default=60, ge=1, le=200)
     agent_checkpoint_pool_min_size: int = Field(default=1, ge=1, le=20)

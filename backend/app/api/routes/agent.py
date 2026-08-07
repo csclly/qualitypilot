@@ -4,7 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.drafting import EvidenceBasedDraftGenerator
+from app.agent.drafting import ResilientRecommendationGenerator
 from app.agent.protocols import (
     AgentRuntimeContext,
     EvidenceRetriever,
@@ -21,6 +21,7 @@ from app.agent.workflow import (
     get_quality_agent_workflow,
 )
 from app.api.errors import embedding_http_exception
+from app.core.config import get_settings
 from app.db import get_db
 from app.schemas import (
     AgentApprovalRequest,
@@ -32,14 +33,19 @@ from app.services.embedding.workflow import (
     EmbeddingProviderFactory,
     get_embedding_provider_factory,
 )
+from app.services.generation.factory import create_generation_provider
 
 
 router = APIRouter(prefix="/agent/runs", tags=["agent"])
-_draft_generator = EvidenceBasedDraftGenerator()
 
 
 def get_recommendation_generator() -> RecommendationGenerator:
-    return _draft_generator
+    settings = get_settings()
+    return ResilientRecommendationGenerator(
+        create_generation_provider,
+        max_retries=settings.generation_max_retries,
+        retry_base_delay_seconds=settings.generation_retry_base_delay_seconds,
+    )
 
 
 def _response(state: dict) -> AgentRunResponse:
