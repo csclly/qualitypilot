@@ -11,10 +11,18 @@ def create_generation_provider(
     client: httpx.AsyncClient | None = None,
 ) -> QwenStructuredRecommendationGenerator:
     current = settings or get_settings()
-    secret = current.dashscope_api_key
+    secret = current.generation_api_key
+    if current.generation_provider == "dashscope" and secret is None:
+        secret = current.dashscope_api_key
     if secret is None or not secret.get_secret_value().strip():
-        raise GenerationConfigurationError("未配置 DASHSCOPE_API_KEY")
+        required_key = (
+            "GENERATION_API_KEY（或 DASHSCOPE_API_KEY）"
+            if current.generation_provider == "dashscope"
+            else "GENERATION_API_KEY"
+        )
+        raise GenerationConfigurationError(f"未配置 {required_key}")
     return QwenStructuredRecommendationGenerator(
+        provider=current.generation_provider,
         api_key=secret.get_secret_value(),
         base_url=current.generation_base_url,
         model=current.generation_model,

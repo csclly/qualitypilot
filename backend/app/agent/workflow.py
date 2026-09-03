@@ -5,7 +5,12 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import Command, interrupt
 
+from app.agent.business_tools import (
+    collect_business_context,
+    to_agent_business_context,
+)
 from app.agent.protocols import AgentRuntimeContext
+from app.agent.run_errors import AgentErrorStage
 from app.agent.state import QualityAgentState
 
 
@@ -17,26 +22,62 @@ class AgentRunNotAwaitingApprovalError(Exception):
     pass
 
 
+class AgentNodeExecutionError(RuntimeError):
+    def __init__(self, stage: AgentErrorStage, cause: Exception) -> None:
+        super().__init__(f"Agent 节点执行失败：{stage}")
+        self.stage = stage
+        self.cause = cause
+
+
 async def _retrieve_evidence(
     state: QualityAgentState,
     runtime: Runtime[AgentRuntimeContext],
 ) -> QualityAgentState:
-    evidence = await runtime.context.retriever(
-        state["question"],
-        top_k=state["top_k"],
-        mode=state["search_mode"],
-    )
-    return {"status": "drafting", "evidence": evidence}
+    try:
+        evidence = await runtime.context.retriever(
+            state["question"],
+            top_k=state["top_k"],
+            mode=state["search_mode"],
+        )
+    except Exception as exc:
+        raise AgentNodeExecutionError("retrieval", exc) from exc
+    return {"status": "querying_business_context", "evidence": evidence}
+
+
+async def _query_business_context(
+    state: QualityAgentState,
+    runtime: Runtime[AgentRuntimeContext],
+) -> QualityAgentState:
+    try:
+        results = await collect_business_context(
+            state["question"],
+            runtime.context.business_tools,
+            limit_per_tool=runtime.context.business_tool_limit,
+            timeout_seconds=runtime.context.business_tool_timeout_seconds,
+        )
+    except Exception as exc:
+        raise AgentNodeExecutionError("business_context", exc) from exc
+    records, failures = to_agent_business_context(results)
+    return {
+        "status": "drafting",
+        "business_records": records,
+        "business_tool_failures": failures,
+    }
 
 
 async def _draft_recommendation(
     state: QualityAgentState,
     runtime: Runtime[AgentRuntimeContext],
 ) -> QualityAgentState:
-    draft = await runtime.context.generator.generate(
-        state["question"],
-        state["evidence"],
-    )
+    try:
+        draft = await runtime.context.generator.generate(
+            state["question"],
+            state["evidence"],
+            state.get("business_records", []),
+            state.get("business_tool_failures", []),
+        )
+    except Exception as exc:
+        raise AgentNodeExecutionError("drafting", exc) from exc
     return {"status": "pending_approval", "draft": draft}
 
 
@@ -47,6 +88,10 @@ def _request_approval(state: QualityAgentState) -> QualityAgentState:
             "run_id": state["run_id"],
             "question": state["question"],
             "evidence_count": len(state["evidence"]),
+            "business_record_count": len(state.get("business_records", [])),
+            "business_tool_failure_count": len(
+                state.get("business_tool_failures", [])
+            ),
             "draft": state["draft"],
         }
     )
@@ -77,12 +122,14 @@ def _build_graph(checkpointer: BaseCheckpointSaver):
         context_schema=AgentRuntimeContext,
     )
     builder.add_node("retrieve_evidence", _retrieve_evidence)
+    builder.add_node("query_business_context", _query_business_context)
     builder.add_node("draft_recommendation", _draft_recommendation)
     builder.add_node("request_approval", _request_approval)
     builder.add_node("finalize_approved", _finalize_approved)
     builder.add_node("finalize_rejected", _finalize_rejected)
     builder.add_edge(START, "retrieve_evidence")
-    builder.add_edge("retrieve_evidence", "draft_recommendation")
+    builder.add_edge("retrieve_evidence", "query_business_context")
+    builder.add_edge("query_business_context", "draft_recommendation")
     builder.add_edge("draft_recommendation", "request_approval")
     builder.add_conditional_edges(
         "request_approval",

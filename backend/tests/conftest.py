@@ -33,6 +33,10 @@ os.environ["DEBUG"] = "false"
 os.environ["UPLOAD_DIRECTORY"] = str(TEST_UPLOAD_DIRECTORY)
 # 自动化测试必须显式注入 Fake Provider，禁止意外消耗真实云端额度。
 os.environ["DASHSCOPE_API_KEY"] = ""
+os.environ["GENERATION_API_KEY"] = ""
+os.environ["GENERATION_PROVIDER"] = "dashscope"
+os.environ["AGENT_ALERT_WEBHOOK_URL"] = ""
+os.environ["AGENT_ALERT_WEBHOOK_BEARER_TOKEN"] = ""
 
 
 def _requires_database(request: pytest.FixtureRequest) -> bool:

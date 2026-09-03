@@ -1,5 +1,6 @@
 from sqlalchemy import (
     Column,
+    DateTime,
     Index,
     Integer,
     LargeBinary,
@@ -7,6 +8,7 @@ from sqlalchemy import (
     PrimaryKeyConstraint,
     Table,
     Text,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -32,6 +34,12 @@ def register_checkpoint_tables(metadata: MetaData) -> None:
         Column("type", Text),
         Column("checkpoint", JSONB, nullable=False),
         Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+        Column(
+            "created_at",
+            DateTime(timezone=True),
+            nullable=False,
+            server_default=func.now(),
+        ),
         PrimaryKeyConstraint("thread_id", "checkpoint_ns", "checkpoint_id"),
     )
     checkpoint_blobs = Table(

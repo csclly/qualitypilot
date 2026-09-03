@@ -5,13 +5,23 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 import pytest
 from pydantic import ValidationError
 
+from app.agent.business_tools import (
+    BusinessRecord,
+    BusinessSystem,
+    InMemoryReadOnlyBusinessTool,
+)
 from app.agent.persistence import (
     build_postgres_agent_workflow,
     create_checkpoint_pool,
     to_psycopg_conninfo,
 )
 from app.agent.protocols import AgentRuntimeContext
-from app.agent.state import AgentEvidence, AgentRecommendation
+from app.agent.state import (
+    AgentBusinessRecord,
+    AgentBusinessToolFailure,
+    AgentEvidence,
+    AgentRecommendation,
+)
 from app.core.config import Settings
 from tests.conftest import TEST_DATABASE_URL
 
@@ -21,11 +31,22 @@ class FakeGenerator:
         self,
         question: str,
         evidence: list[AgentEvidence],
+        business_records: list[AgentBusinessRecord],
+        business_tool_failures: list[AgentBusinessToolFailure],
     ) -> AgentRecommendation:
         return {
             "summary": f"{question}：{len(evidence)} 条证据",
             "suggested_actions": ["人工核查证据"],
             "risk_notes": ["测试草稿"],
+            "citations": [evidence[0]["chunk_id"]],
+            "business_record_references": [
+                {
+                    "tool_name": item["tool_name"],
+                    "record_id": item["record_id"],
+                }
+                for item in business_records
+            ],
+            "generation_mode": "model",
         }
 
 
@@ -54,7 +75,26 @@ def _context() -> AgentRuntimeContext:
             }
         ]
 
-    return AgentRuntimeContext(retriever=retrieve, generator=FakeGenerator())
+    question = "进程重启后还能审批吗？"
+    mes = InMemoryReadOnlyBusinessTool(
+        name="mes-reader",
+        system=BusinessSystem.MES,
+        responses={
+            question: [
+                BusinessRecord(
+                    system=BusinessSystem.MES,
+                    record_id="MES-PERSIST-1",
+                    record_type="batch_status",
+                    summary="持久化业务记录",
+                )
+            ]
+        },
+    )
+    return AgentRuntimeContext(
+        retriever=retrieve,
+        generator=FakeGenerator(),
+        business_tools=(mes,),
+    )
 
 
 def test_psycopg_conninfo_replaces_sqlalchemy_driver() -> None:
@@ -119,6 +159,7 @@ async def test_agent_checkpoint_survives_workflow_and_pool_recreation() -> None:
         assert restored is not None
         assert restored["status"] == "pending_approval"
         assert restored["question"] == initial_state["question"]
+        assert restored["business_records"][0]["record_id"] == "MES-PERSIST-1"
 
         completed = await second_workflow.approve(
             run_id,

@@ -3,8 +3,18 @@ from datetime import datetime, timezone
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from sqlalchemy import select
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import embedding_http_exception
@@ -143,8 +153,23 @@ async def upload_document(
 
 
 @router.get("", response_model=list[DocumentResponse])
-async def list_documents(db: AsyncSession = Depends(get_db)) -> list[Document]:
-    result = await db.execute(select(Document).order_by(Document.created_at.desc()))
+async def list_documents(
+    response: Response,
+    limit: Annotated[int | None, Query(ge=1, le=200)] = None,
+    offset: Annotated[int, Query(ge=0, le=1_000_000)] = 0,
+    db: AsyncSession = Depends(get_db),
+) -> list[Document]:
+    total = await db.scalar(select(func.count()).select_from(Document))
+    statement = select(Document).order_by(
+        Document.created_at.desc(),
+        Document.id.desc(),
+    )
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
+    result = await db.execute(statement)
+    _set_pagination_headers(response, total or 0, limit, offset)
     return list(result.scalars().all())
 
 
@@ -178,14 +203,39 @@ async def backfill_embeddings(
 @router.get("/{document_id}/chunks", response_model=list[DocumentChunkResponse])
 async def list_document_chunks(
     document_id: uuid.UUID,
+    response: Response,
+    limit: Annotated[int | None, Query(ge=1, le=500)] = None,
+    offset: Annotated[int, Query(ge=0, le=1_000_000)] = 0,
     db: AsyncSession = Depends(get_db),
 ) -> list[DocumentChunk]:
     document_exists = await db.scalar(select(Document.id).where(Document.id == document_id))
     if document_exists is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文档不存在")
-    result = await db.execute(
+    total = await db.scalar(
+        select(func.count())
+        .select_from(DocumentChunk)
+        .where(DocumentChunk.document_id == document_id)
+    )
+    statement = (
         select(DocumentChunk)
         .where(DocumentChunk.document_id == document_id)
         .order_by(DocumentChunk.chunk_index)
     )
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
+    result = await db.execute(statement)
+    _set_pagination_headers(response, total or 0, limit, offset)
     return list(result.scalars().all())
+
+
+def _set_pagination_headers(
+    response: Response,
+    total: int,
+    limit: int | None,
+    offset: int,
+) -> None:
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["X-Limit"] = str(limit) if limit is not None else "all"
+    response.headers["X-Offset"] = str(offset)

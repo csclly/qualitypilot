@@ -233,3 +233,72 @@ async def test_rejects_unsupported_upload_and_missing_document() -> None:
     assert upload_response.status_code == 415
     assert chunks_response.status_code == 404
     assert backfill_response.status_code == 404
+
+
+@pytest.mark.integration
+async def test_document_and_chunk_lists_support_optional_pagination() -> None:
+    document_ids = [uuid.uuid4() for _ in range(3)]
+    paged_document_id = document_ids[0]
+    async with SessionLocal() as session:
+        async with session.begin():
+            session.add_all(
+                [
+                    Document(
+                        id=document_id,
+                        title=f"分页测试-{index}",
+                        source_type="test",
+                        status="ready",
+                        chunk_count=3 if index == 0 else 0,
+                    )
+                    for index, document_id in enumerate(document_ids)
+                ]
+            )
+            session.add_all(
+                [
+                    DocumentChunk(
+                        document_id=paged_document_id,
+                        chunk_index=index,
+                        content=f"分页分块-{index}",
+                    )
+                    for index in range(3)
+                ]
+            )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            documents_response = await client.get(
+                "/api/v1/knowledge/documents",
+                params={"limit": 2, "offset": 1},
+            )
+            chunks_response = await client.get(
+                f"/api/v1/knowledge/documents/{paged_document_id}/chunks",
+                params={"limit": 2, "offset": 1},
+            )
+            unpaged_chunks_response = await client.get(
+                f"/api/v1/knowledge/documents/{paged_document_id}/chunks"
+            )
+            invalid_response = await client.get(
+                "/api/v1/knowledge/documents",
+                params={"limit": 0},
+            )
+
+        assert documents_response.status_code == 200
+        assert len(documents_response.json()) == 2
+        assert int(documents_response.headers["X-Total-Count"]) >= 3
+        assert documents_response.headers["X-Limit"] == "2"
+        assert documents_response.headers["X-Offset"] == "1"
+        assert chunks_response.status_code == 200
+        assert [item["chunk_index"] for item in chunks_response.json()] == [1, 2]
+        assert chunks_response.headers["X-Total-Count"] == "3"
+        assert len(unpaged_chunks_response.json()) == 3
+        assert unpaged_chunks_response.headers["X-Limit"] == "all"
+        assert invalid_response.status_code == 422
+    finally:
+        async with SessionLocal() as session:
+            await session.execute(
+                delete(Document).where(Document.id.in_(document_ids))
+            )
+            await session.commit()

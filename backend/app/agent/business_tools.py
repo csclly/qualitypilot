@@ -2,10 +2,19 @@ import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Protocol, TypeAlias
+import math
+from typing import Protocol
+
+from app.agent.state import (
+    AgentBusinessRecord,
+    AgentBusinessToolFailure,
+    BusinessValue,
+)
 
 
-BusinessValue: TypeAlias = str | int | float | bool | None
+MAX_RECORD_ATTRIBUTES = 20
+MAX_RECORD_TEXT_LENGTH = 2000
+MAX_ATTRIBUTE_TEXT_LENGTH = 1000
 
 
 class BusinessSystem(str, Enum):
@@ -31,12 +40,32 @@ class BusinessRecord:
     attributes: Mapping[str, BusinessValue] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if not isinstance(self.system, BusinessSystem):
+            raise ValueError("业务记录来源系统无效")
         if not self.record_id.strip():
             raise ValueError("业务记录 ID 不能为空")
         if not self.record_type.strip():
             raise ValueError("业务记录类型不能为空")
         if not self.summary.strip():
             raise ValueError("业务记录摘要不能为空")
+        if len(self.record_id) > 255 or len(self.record_type) > 100:
+            raise ValueError("业务记录标识或类型过长")
+        if len(self.summary) > MAX_RECORD_TEXT_LENGTH:
+            raise ValueError("业务记录摘要过长")
+        if len(self.attributes) > MAX_RECORD_ATTRIBUTES:
+            raise ValueError("业务记录属性数量超过上限")
+        for key, value in self.attributes.items():
+            if not isinstance(key, str) or not key.strip() or len(key) > 100:
+                raise ValueError("业务记录属性名无效")
+            if isinstance(value, str) and len(value) > MAX_ATTRIBUTE_TEXT_LENGTH:
+                raise ValueError("业务记录属性文本过长")
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError("业务记录属性数值必须有限")
+            if value is not None and not isinstance(
+                value,
+                (str, int, float, bool),
+            ):
+                raise ValueError("业务记录属性只能使用标量值")
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,8 +168,13 @@ async def collect_business_context(
         raise ValueError("业务工具超时时间必须大于 0")
 
     names = [tool.name for tool in tools]
-    if any(not name.strip() for name in names):
-        raise ValueError("业务工具名称不能为空")
+    if any(
+        not isinstance(name, str) or not name.strip() or len(name) > 100
+        for name in names
+    ):
+        raise ValueError("业务工具名称无效")
+    if any(not isinstance(tool.system, BusinessSystem) for tool in tools):
+        raise ValueError("业务工具来源系统无效")
     if len(names) != len(set(names)):
         raise ValueError("业务工具名称不能重复")
 
@@ -156,6 +190,36 @@ async def collect_business_context(
         )
     )
     return tuple(results)
+
+
+def to_agent_business_context(
+    results: Sequence[BusinessToolResult],
+) -> tuple[list[AgentBusinessRecord], list[AgentBusinessToolFailure]]:
+    records: list[AgentBusinessRecord] = []
+    failures: list[AgentBusinessToolFailure] = []
+    for result in results:
+        records.extend(
+            {
+                "tool_name": result.tool_name,
+                "system": result.system.value,
+                "record_id": record.record_id,
+                "record_type": record.record_type,
+                "summary": record.summary,
+                "attributes": dict(record.attributes),
+            }
+            for record in result.records
+        )
+        if result.failure is not None:
+            failures.append(
+                {
+                    "tool_name": result.tool_name,
+                    "system": result.system.value,
+                    "kind": result.failure.kind.value,
+                    "message": result.failure.message,
+                    "retryable": result.failure.retryable,
+                }
+            )
+    return records, failures
 
 
 async def _query_tool(

@@ -2,9 +2,21 @@ import uuid
 
 import pytest
 
+from app.agent.business_tools import (
+    BusinessRecord,
+    BusinessSystem,
+    BusinessToolUnavailableError,
+    InMemoryReadOnlyBusinessTool,
+)
 from app.agent.protocols import AgentRuntimeContext
-from app.agent.state import AgentEvidence, AgentRecommendation
+from app.agent.state import (
+    AgentBusinessRecord,
+    AgentBusinessToolFailure,
+    AgentEvidence,
+    AgentRecommendation,
+)
 from app.agent.workflow import (
+    AgentNodeExecutionError,
     AgentRunNotAwaitingApprovalError,
     QualityAgentWorkflow,
 )
@@ -33,12 +45,24 @@ class FakeGenerator:
         self,
         question: str,
         evidence: list[AgentEvidence],
+        business_records: list[AgentBusinessRecord],
+        business_tool_failures: list[AgentBusinessToolFailure],
     ) -> AgentRecommendation:
         return {
-            "summary": f"问题：{question}；证据数：{len(evidence)}",
+            "summary": (
+                f"问题：{question}；证据数：{len(evidence)}；"
+                f"业务记录：{len(business_records)}"
+            ),
             "suggested_actions": ["检查钢网开口"],
             "risk_notes": ["需要人工确认"],
             "citations": [evidence[0]["chunk_id"]],
+            "business_record_references": [
+                {
+                    "tool_name": item["tool_name"],
+                    "record_id": item["record_id"],
+                }
+                for item in business_records
+            ],
             "generation_mode": "model",
         }
 
@@ -54,7 +78,32 @@ def _context() -> AgentRuntimeContext:
         assert mode == "hybrid"
         return _evidence()
 
-    return AgentRuntimeContext(retriever=retrieve, generator=FakeGenerator())
+    question = "回流焊连续桥接应该检查什么？"
+    mes = InMemoryReadOnlyBusinessTool(
+        name="mes-reader",
+        system=BusinessSystem.MES,
+        responses={
+            question: [
+                BusinessRecord(
+                    system=BusinessSystem.MES,
+                    record_id="MES-001",
+                    record_type="batch_status",
+                    summary="批次已暂停",
+                )
+            ]
+        },
+    )
+    qms = InMemoryReadOnlyBusinessTool(
+        name="qms-reader",
+        system=BusinessSystem.QMS,
+        error=BusinessToolUnavailableError(),
+    )
+    return AgentRuntimeContext(
+        retriever=retrieve,
+        generator=FakeGenerator(),
+        business_tools=(mes, qms),
+        business_tool_timeout_seconds=0.1,
+    )
 
 
 async def test_agent_workflow_pauses_then_resumes_after_approval() -> None:
@@ -76,7 +125,12 @@ async def test_agent_workflow_pauses_then_resumes_after_approval() -> None:
 
     assert pending["status"] == "pending_approval"
     assert len(pending["evidence"]) == 1
+    assert pending["business_records"][0]["record_id"] == "MES-001"
+    assert pending["business_tool_failures"][0]["kind"] == "unavailable"
     assert pending["draft"]["suggested_actions"] == ["检查钢网开口"]
+    assert pending["draft"]["business_record_references"] == [
+        {"tool_name": "mes-reader", "record_id": "MES-001"}
+    ]
     assert "approved" not in pending
 
     completed = await workflow.approve(
@@ -123,3 +177,76 @@ async def test_agent_workflow_rejection_does_not_publish_draft() -> None:
 
     with pytest.raises(AgentRunNotAwaitingApprovalError):
         await workflow.approve(run_id, approved=True, comment=None)
+
+
+async def test_agent_workflow_tags_business_context_failure() -> None:
+    async def retrieve(
+        _question: str,
+        *,
+        top_k: int,
+        mode: str,
+    ) -> list[AgentEvidence]:
+        return _evidence()
+
+    workflow = QualityAgentWorkflow()
+    with pytest.raises(AgentNodeExecutionError) as caught:
+        await workflow.start(
+            {
+                "run_id": str(uuid.uuid4()),
+                "question": "业务上下文错误",
+                "search_mode": "keyword",
+                "top_k": 1,
+                "status": "created",
+                "evidence": [],
+                "final_response": None,
+            },
+            AgentRuntimeContext(
+                retriever=retrieve,
+                generator=FakeGenerator(),
+                business_tool_timeout_seconds=0,
+            ),
+        )
+
+    assert caught.value.stage == "business_context"
+    assert isinstance(caught.value.cause, ValueError)
+
+
+async def test_agent_workflow_tags_unexpected_drafting_failure() -> None:
+    async def retrieve(
+        _question: str,
+        *,
+        top_k: int,
+        mode: str,
+    ) -> list[AgentEvidence]:
+        return _evidence()
+
+    class FailingGenerator:
+        async def generate(
+            self,
+            question: str,
+            evidence: list[AgentEvidence],
+            business_records: list[AgentBusinessRecord],
+            business_tool_failures: list[AgentBusinessToolFailure],
+        ) -> AgentRecommendation:
+            raise RuntimeError("sensitive drafting failure")
+
+    workflow = QualityAgentWorkflow()
+    with pytest.raises(AgentNodeExecutionError) as caught:
+        await workflow.start(
+            {
+                "run_id": str(uuid.uuid4()),
+                "question": "草稿错误",
+                "search_mode": "keyword",
+                "top_k": 1,
+                "status": "created",
+                "evidence": [],
+                "final_response": None,
+            },
+            AgentRuntimeContext(
+                retriever=retrieve,
+                generator=FailingGenerator(),
+            ),
+        )
+
+    assert caught.value.stage == "drafting"
+    assert isinstance(caught.value.cause, RuntimeError)

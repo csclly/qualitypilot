@@ -8,6 +8,7 @@ from app.agent.business_tools import (
     BusinessToolUnavailableError,
     InMemoryReadOnlyBusinessTool,
     collect_business_context,
+    to_agent_business_context,
 )
 
 
@@ -159,3 +160,56 @@ async def test_rejects_duplicate_tool_names() -> None:
 
     assert first.calls == []
     assert second.calls == []
+
+
+async def test_converts_tool_results_to_plain_checkpoint_dtos() -> None:
+    record = _record(BusinessSystem.MES, "MES-DTO-1")
+    tool = InMemoryReadOnlyBusinessTool(
+        name="mes-reader",
+        system=BusinessSystem.MES,
+        responses={"问题": [record]},
+    )
+
+    records, failures = to_agent_business_context(
+        await collect_business_context("问题", [tool])
+    )
+
+    assert records == [
+        {
+            "tool_name": "mes-reader",
+            "system": "mes",
+            "record_id": "MES-DTO-1",
+            "record_type": "quality_event",
+            "summary": "记录 MES-DTO-1",
+            "attributes": {"line": "SMT-01"},
+        }
+    ]
+    assert failures == []
+
+
+def test_business_record_rejects_nested_or_excessive_attributes() -> None:
+    with pytest.raises(ValueError, match="来源系统"):
+        BusinessRecord(
+            system="erp",  # type: ignore[arg-type]
+            record_id="ERP-BAD-1",
+            record_type="batch",
+            summary="来源系统无效",
+        )
+
+    with pytest.raises(ValueError, match="标量值"):
+        BusinessRecord(
+            system=BusinessSystem.MES,
+            record_id="MES-BAD-1",
+            record_type="batch",
+            summary="无效嵌套属性",
+            attributes={"nested": {"secret": "value"}},  # type: ignore[dict-item]
+        )
+
+    with pytest.raises(ValueError, match="属性数量"):
+        BusinessRecord(
+            system=BusinessSystem.QMS,
+            record_id="QMS-BAD-1",
+            record_type="event",
+            summary="属性过多",
+            attributes={f"field_{index}": index for index in range(21)},
+        )

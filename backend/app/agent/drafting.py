@@ -1,7 +1,12 @@
 import asyncio
 from collections.abc import Callable
 
-from app.agent.state import AgentEvidence, AgentRecommendation
+from app.agent.state import (
+    AgentBusinessRecord,
+    AgentBusinessToolFailure,
+    AgentEvidence,
+    AgentRecommendation,
+)
 from app.services.generation.errors import (
     GenerationAPIError,
     GenerationServiceError,
@@ -20,38 +25,68 @@ class EvidenceBasedDraftGenerator:
         self,
         question: str,
         evidence: list[AgentEvidence],
+        business_records: list[AgentBusinessRecord] | None = None,
+        business_tool_failures: list[AgentBusinessToolFailure] | None = None,
     ) -> AgentRecommendation:
-        if not evidence:
+        records = business_records or []
+        failures = business_tool_failures or []
+        if not evidence and not records:
+            failure_notes = [
+                f"{failure['tool_name']} 查询失败：{failure['message']}"
+                for failure in failures
+            ]
             return {
-                "summary": "知识库中没有检索到可用证据，暂不能形成处置建议。",
+                "summary": "知识库和业务系统中没有可用证据，暂不能形成处置建议。",
                 "suggested_actions": [],
                 "risk_notes": [
                     "需要补充知识文档或现场数据后重新分析。",
                     "当前草稿不得触发生产操作。",
+                    *failure_notes,
                 ],
                 "citations": [],
+                "business_record_references": [],
                 "generation_mode": "deterministic_fallback",
             }
 
-        suggested_actions = [
+        knowledge_actions = [
             (
                 f"核查《{item['document_title']}》第 "
                 f"{item['chunk_index'] + 1} 个分块，并结合现场数据确认。"
             )
             for item in evidence[:3]
         ]
+        business_actions = [
+            (
+                f"核查 {item['system'].upper()} 记录 {item['record_id']}："
+                f"{item['summary']}"
+            )
+            for item in records[:3]
+        ]
+        failure_notes = [
+            f"{failure['tool_name']} 查询失败：{failure['message']}"
+            for failure in failures
+        ]
         return {
             "summary": (
-                f"针对“{question}”已整理 {len(evidence)} 条知识库证据，"
+                f"针对“{question}”已整理 {len(evidence)} 条知识库证据和 "
+                f"{len(records)} 条只读业务记录，"
                 "以下内容是等待人工确认的分析草稿。"
             ),
-            "suggested_actions": suggested_actions,
+            "suggested_actions": [*knowledge_actions, *business_actions],
             "risk_notes": [
                 "当前草稿使用确定性规则整理证据。",
-                "证据仅来自知识库，不包含实时 MES/QMS 生产数据。",
+                "业务记录仅用于只读分析，不代表已经执行任何生产操作。",
                 "草稿通过人工审批前不得触发工单或生产参数变更。",
+                *failure_notes,
             ],
             "citations": [item["chunk_id"] for item in evidence[:3]],
+            "business_record_references": [
+                {
+                    "tool_name": item["tool_name"],
+                    "record_id": item["record_id"],
+                }
+                for item in records[:3]
+            ],
             "generation_mode": "deterministic_fallback",
         }
 
@@ -76,9 +111,18 @@ class ResilientRecommendationGenerator:
         self,
         question: str,
         evidence: list[AgentEvidence],
+        business_records: list[AgentBusinessRecord] | None = None,
+        business_tool_failures: list[AgentBusinessToolFailure] | None = None,
     ) -> AgentRecommendation:
-        if not evidence:
-            return await self._fallback.generate(question, evidence)
+        records = business_records or []
+        failures = business_tool_failures or []
+        if not evidence and not records:
+            return await self._fallback.generate(
+                question,
+                evidence,
+                records,
+                failures,
+            )
 
         provider: QwenStructuredRecommendationGenerator | None = None
         try:
@@ -86,7 +130,12 @@ class ResilientRecommendationGenerator:
             retry_count = 0
             while True:
                 try:
-                    return await provider.generate(question, evidence)
+                    return await provider.generate(
+                        question,
+                        evidence,
+                        records,
+                        failures,
+                    )
                 except GenerationServiceError as exc:
                     if retry_count >= self._max_retries or not _is_retryable(exc):
                         raise
@@ -95,7 +144,12 @@ class ResilientRecommendationGenerator:
                     if delay > 0:
                         await asyncio.sleep(delay)
         except GenerationServiceError as exc:
-            draft = await self._fallback.generate(question, evidence)
+            draft = await self._fallback.generate(
+                question,
+                evidence,
+                records,
+                failures,
+            )
             draft["risk_notes"].insert(0, _fallback_reason(exc))
             return draft
         finally:
