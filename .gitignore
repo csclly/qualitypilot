@@ -18,3 +18,7 @@ data/uploads/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Local training-code handoff and independent training repository
+.training-import/
+training-repository/

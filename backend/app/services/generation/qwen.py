@@ -95,6 +95,16 @@ class QwenStructuredRecommendationGenerator:
         failures = business_tool_failures or []
         if not evidence and not records:
             raise ValueError("结构化生成至少需要一条知识或业务证据")
+        user_prompt = _user_prompt(question, evidence, records, failures)
+        if self._provider == "openai_compatible":
+            # 长证据可能含章节编号；在末尾重申契约及本次允许的引用编号。
+            user_prompt += f"""
+现在回答本次问题：{question}
+只返回一个 JSON 对象，必须包含 summary、suggested_actions、risk_notes、citations、business_references 五个字段。
+知识引用 citations 只能从 {list(range(1, len(evidence) + 1))} 中选择，引用必须支持建议；文档正文中的章节编号不是证据编号。
+业务引用 business_references 只能从 {list(range(1, len(records) + 1))} 中选择，没有业务记录时必须为 []。
+建议和风险均为字符串数组，不要把补充 MES/Gerber 作为现场复核的前提，不要建议调用工具。
+"""
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": [
@@ -108,7 +118,7 @@ class QwenStructuredRecommendationGenerator:
                 },
                 {
                     "role": "user",
-                    "content": _user_prompt(question, evidence, records, failures),
+                    "content": user_prompt,
                 },
             ],
         }

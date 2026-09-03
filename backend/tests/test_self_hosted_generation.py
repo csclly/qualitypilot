@@ -114,6 +114,7 @@ async def test_dashscope_key_compatibility_and_request_fields(key) -> None:
     assert payload["enable_thinking"] is False
     assert payload["max_completion_tokens"] == 1200
     assert "max_tokens" not in payload
+    assert "现在回答本次问题" not in payload["messages"][1]["content"]
 
 
 @pytest.mark.parametrize("content", [
@@ -322,3 +323,39 @@ async def test_format_correction_does_not_expand_scope(mode, content) -> None:
         with pytest.raises(GenerationResponseError):
             await provider.generate("问题", [], _records())
     assert calls == 1
+
+
+@pytest.mark.parametrize("invalid_kind", ["missing_fields", "chapter_number"])
+async def test_self_hosted_rejects_observed_missing_or_chapter_citations(invalid_kind):
+    from app.services.generation.errors import GenerationResponseError
+
+    evidence = [{
+        "chunk_id": "00000000-0000-4000-8000-000000000001",
+        "document_title": "AOI 复核测试",
+        "chunk_index": 0,
+        "content": "5. 虚焊：仅为文档内部章节编号。",
+    }]
+    captured = []
+    content = json.loads(_content(citations=[1], business_references=[]))
+    if invalid_kind == "missing_fields":
+        del content["citations"]
+        del content["business_references"]
+    else:
+        content["citations"] = [5]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content))
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": json.dumps(content)}}],
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = create_generation_provider(_settings(), client=client)
+        with pytest.raises(GenerationResponseError):
+            await provider.generate("AOI 报点增加", evidence)
+
+    assert len(captured) == 1
+    prompt = captured[0]["messages"][1]["content"]
+    assert "5. 虚焊" in prompt
+    assert "知识引用 citations 只能从 [1]" in prompt
+    assert "业务引用 business_references 只能从 []" in prompt

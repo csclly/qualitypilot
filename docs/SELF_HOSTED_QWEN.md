@@ -2,6 +2,30 @@
 
 当前目标是将 Agent 文本生成切换到微调模型 `pcb-qwen-lora`。Embedding 继续使用现有百炼模型、1024 维向量和密钥；无需数据库迁移或重新生成向量。
 
+## 0. 在云端启动模型 HTTP 服务
+
+已验证的部署目录为 `/root/autodl-tmp/pcb-qwen-server`，服务文件为 `model_server.py`，FastAPI 实例名为 `app`。云端读取 `PCB_LLM_API_KEY`，它必须与本地 `GENERATION_API_KEY` 的值一致。
+
+在同一个云端终端中配置变量并启动（若旧服务仍在运行，先正常停止旧进程）：
+
+```bash
+conda activate qwen-sft
+cd /root/autodl-tmp/pcb-qwen-server
+read -r -s -p "请输入与本地 GENERATION_API_KEY 相同的密钥：" PCB_LLM_API_KEY
+export PCB_LLM_API_KEY
+python -m uvicorn model_server:app --host 0.0.0.0 --port 8001
+```
+
+输入只包含密钥值，不加 Bearer 前缀或引号。环境变量只影响该终端随后启动的进程，不会修改已运行服务。不要把真实密钥写入仓库或粘贴到聊天中。
+
+看到 `Application startup complete` 和端口 8001 的 Uvicorn 运行信息后保持终端打开。仅看到“模型加载完成”后返回命令提示符，不代表 HTTP 服务持续运行。可在另一个云端终端检查：
+
+```bash
+curl --max-time 10 http://127.0.0.1:8001/health
+```
+
+健康检查成功只能证明服务报告就绪，生成接口的认证与结构化响应仍需后续验证。
+
 ## 1. 建立 WSL 到 AutoDL 的 SSH 隧道
 
 在运行 QualityPilot 后端的同一 WSL 发行版中执行，并保持终端打开：
@@ -81,3 +105,7 @@ cd /home/qualitypilot/projects/qualitypilot/backend
 ## 6. 切回百炼
 
 将 `GENERATION_PROVIDER` 改回 `dashscope`，清空 `GENERATION_API_KEY` 以复用现有 `DASHSCOPE_API_KEY`，同时恢复原百炼生成地址和模型（默认地址为 `https://dashscope.aliyuncs.com/compatible-mode/v1`，原模型为 `qwen3.7-max-2026-05-20`），然后重启后端。不要只改模式而保留自部署服务的地址和 Token。
+
+## 7. 2026-09-03 最新联调结论
+
+环境认证对齐并加强自部署提示末尾的必填字段与合法编号说明后，真实前端已跑通关键词及混合检索到 model 草稿、引用展开和刷新恢复；模型测试草稿的拒绝与审计持久化也通过。189 项后端测试通过，具体运行编号和限制见项目状态最新记录。输出仍需业务复核，两个示例不构成完整生成质量评测。
