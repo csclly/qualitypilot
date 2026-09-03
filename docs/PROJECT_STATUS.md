@@ -2,6 +2,17 @@
 
 最后更新：2026-09-03
 
+## 2026-09-03：应用与训练仓库分别同步 GitHub
+
+- 应用仓库 https://github.com/csclly/qualitypilot 的 bd0ff4d 已推送；固定演示、提示词修复与八题模型评测已入库，对应 GitHub Actions 33734823709 通过。
+- 独立私有训练仓库 https://github.com/csclly/qualitypilot-qwen-finetuning 已创建并推送 18aa785。本地目录 training-repository/ 由应用 Git 忽略；对应 GitHub Actions 33736166057 已通过。
+- 已收到并审阅六个云端 Python 文件、adapter_config.json、trainer_state.json 和依赖版本。基础模型、LoRA 权重、私有训练数据及本地密钥均未入库。
+- 训练仓库记录 NF4 QLoRA、r=16、assistant-only loss、2 epochs / 1250 steps；原记录最终 eval_loss=0.09870848059654236、整体 train_loss=0.14754383438825608。仅为已完成实验的记录，不是此次重训或业务准确率。
+- 通过源码确认：固定路径改为环境变量；训练/对比输出拒绝覆盖；样本文本日志默认关闭；服务移除默认密钥并要求显式配置，保留原生成逻辑。
+- 已实际执行：14 项无 GPU 测试通过，覆盖标签屏蔽、截断过滤、重复检查、输出保护、空密钥和 Bearer 校验。已检查候选源码未命中本地凭据及常见令牌模式；不是完整安全审计。
+- 验证边界：原云端服务已完成应用联调；整理后的训练/推理/服务代码没有在 GPU 上重新运行或覆盖在线服务。未取得完整数据流水线、原 Base/LoRA 对比结果、真实数据重叠统计和完整环境锁。
+- 下一阶段优先对失败题做人工评审、采集真实数据划分信息，并以独立题集比较基础模型与 LoRA；低验证损失不能证明业务效果提升。
+
 ## 2026-09-03：固定演示与首轮模型评测
 
 - 新增固定演示手册 docs/DEMO_RUNBOOK.md 与合成资料 docs/demo/PCB_AOI_DEMO.md。

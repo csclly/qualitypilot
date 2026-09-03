@@ -63,7 +63,7 @@ bash start.sh
 
 前端默认采用“关键词检索 + 规则草稿”，不请求生成模型。检索已有知识与人工复核可以在云端生成模型停机时使用。上传文档、补全向量、语义或混合检索仍依赖配置的 Embedding 服务；新空库需先导入知识才能获得证据。
 
-自部署生成模型使用独立的 `GENERATION_API_KEY`，Embedding 继续使用百炼配置。接入步骤见 [自部署 Qwen2.5](docs/SELF_HOSTED_QWEN.md)。此仓库不包含模型训练代码、权重或私有训练数据。
+自部署生成模型使用独立的 `GENERATION_API_KEY`，Embedding 继续使用百炼配置。接入步骤见 [自部署 Qwen2.5](docs/SELF_HOSTED_QWEN.md)。训练与服务代码单独保存在 [Qwen2.5 微调仓库](https://github.com/csclly/qualitypilot-qwen-finetuning)，包含启动说明、实际训练记录和无 GPU 检查。两个仓库均不包含模型权重或私有训练数据。
 
 ## 验证
 
